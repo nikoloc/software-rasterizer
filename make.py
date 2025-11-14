@@ -10,41 +10,9 @@ from aods import (
 import sys
 import os
 
-
-def wayland_init_client_protocol(p: str, dest: str):
-    dir = pkgconfig_get_variable("wayland-protocols", "pkgdatadir")
-
-    path = "/".join([dir, p])
-
-    name = p.split("/")[-1]
-    header = dest + "/" + name.replace(".xml", "-protocol.h")
-    code = dest + "/" + name.replace(".xml", "-protocol.c")
-
-    result = run(["wayland-scanner", "client-header", path, header])
-    if result.returncode != 0:
-        raise Exception(f"wayland protocol initialization failed for `{p}`!")
-
-    result = run(["wayland-scanner", "private-code", path, code])
-    if result.returncode != 0:
-        raise Exception(f"wayland protocol initialization failed for `{p}`!")
-
-    return (header, code)
-
-
 build_type = BuildType.RELEASE if "--release" in sys.argv else BuildType.DEBUG
 
-
 ctx = Context.default("main")
-
-assert_installed("wayland-protocols")
-
-protocols = [
-    "stable/xdg-shell/xdg-shell.xml",
-]
-
-for protocol in protocols:
-    _, code = wayland_init_client_protocol(protocol, ctx.build_dir)
-    ctx.add_source(code)
 
 ctx.add_include(
     [

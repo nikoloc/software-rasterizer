@@ -1,10 +1,10 @@
 #include "scene.h"
 
 #include "alloc.h"
+#include "assets.h"
 #include "box.h"
 #include "color.h"
 #include "macros.h"
-#include "mesh.h"
 #include "triangle.h"
 
 static inline void

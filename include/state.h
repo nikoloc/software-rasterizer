@@ -9,8 +9,10 @@ struct keys {
 
 struct state {
     struct w_connection *conn;
+
     struct camera *camera;
     struct scene_tree *scene;
+    struct assets_manager *assets;
 
     struct window *window;
     float *depth_buffer;

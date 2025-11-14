@@ -4,8 +4,8 @@
 #include <w_keyboard.h>
 #include <w_pointer.h>
 
+#include "assets.h"
 #include "camera.h"
-#include "mesh.h"
 #include "scene.h"
 #include "state.h"
 #include "window.h"
@@ -18,12 +18,14 @@ main(void) {
     assert(g.conn);
 
     g.window = window_create(&g);
+
     g.camera = camera_create(M_PI_2, 1.0f / 4096.0f, 4.0f);
     g.camera->pos.y = -200.0f;
 
     g.scene = scene_add_tree(NULL);
+    g.assets = assets_manager_create();
 
-    struct mesh *mesh = mesh_load("assets/meshes/tree.obj");
+    struct mesh *mesh = assets_manager_load_mesh(g.assets, "assets/meshes/tree.obj");
     assert(mesh);
 
     struct scene_mesh *scene_mesh = scene_add_mesh(g.scene, mesh);
@@ -34,7 +36,7 @@ main(void) {
 
     // we only need to remove the root node, since it will resursively remove its children
     scene_node_remove(&g.scene->node);
-    mesh_destroy(mesh);
+    assets_manager_destroy(g.assets);
     camera_destroy(g.camera);
     window_destroy(g.window);
     w_connection_destroy(g.conn);

@@ -1,7 +1,6 @@
 #ifndef READER_H
 #define READER_H
 
-#include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -78,6 +77,13 @@ reader_read_line(struct reader *reader, string_t *dest) {
                 reader->cur = p + 1;
                 if(reader->cur >= end) {
                     _read_next(reader);
+                }
+
+                // handle windows newlines: if the previous was \r remove it; note: this is easier done like this, then
+                // if we check it in advance, since the \r and \n characters could be in separate read chunks, making
+                // the logic messy
+                if(dest->len > 0 && dest->data[dest->len - 1] == '\r') {
+                    dest->len--;
                 }
 
                 return true;
