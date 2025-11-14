@@ -25,7 +25,7 @@ main(void) {
     g.scene = scene_add_tree(NULL);
     g.assets = assets_manager_create();
 
-    struct mesh *mesh = assets_manager_load_mesh(g.assets, "assets/meshes/tree.obj");
+    struct mesh *mesh = assets_manager_load_mesh(g.assets, "assets/meshes/weapon-catapult.obj");
     assert(mesh);
 
     struct scene_mesh *scene_mesh = scene_add_mesh(g.scene, mesh);

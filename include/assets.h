@@ -4,6 +4,7 @@
 #include "array.h"
 #include "color.h"
 #include "dynamic_string.h"
+#include "ints.h"
 #include "list.h"
 #include "vec2.h"
 #include "vec3.h"
@@ -17,8 +18,8 @@ struct face {
 };
 
 struct texture {
-    int width, heigh;
-    color_t *pixels;
+    int width, height;
+    u8 *pixels;
 
     // we keep the file path here so we can reuse the material for multiple objects
     string_t path;
@@ -29,6 +30,8 @@ struct texture {
 };
 
 struct material {
+    string_t name;
+
     vec3 diffuse_color;
     vec3 specular_color;
     vec3 ambient_color;
@@ -38,8 +41,6 @@ struct material {
 
     // may be NULL
     struct texture *texture;
-
-    string_t path;
 
     // since a single mesh can have mulitple materials we keep all of them linked
     list_t link;

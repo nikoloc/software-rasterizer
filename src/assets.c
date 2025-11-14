@@ -3,8 +3,10 @@
 #include <sys/stat.h>
 
 #include "alloc.h"
-#include "macros.h"
+#include "ints.h"
 #include "reader.h"
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
 
 struct assets_manager *
 assets_manager_create(void) {
@@ -15,19 +17,9 @@ assets_manager_create(void) {
     return manager;
 }
 
-static void
-texture_destroy(struct texture *texture) {
-    string_deinit(&texture->path);
-    free(texture->pixels);
-    free(texture);
-}
-
 void
 assets_manager_destroy(struct assets_manager *manager) {
-    list_for_each_safe(struct texture, iter, &manager->textures, link) {
-        texture_destroy(iter);
-    }
-
+    // we only need to destroy the meshes, since they will unref the textures, effectively dropping all of them
     list_for_each_safe(struct mesh, iter, &manager->meshes, link) {
         mesh_destroy(iter);
     }
@@ -36,8 +28,8 @@ assets_manager_destroy(struct assets_manager *manager) {
 }
 
 static bool
-add_vertex(struct mesh *mesh, string_array_t *parts) {
-    if(parts->len != 4) {
+mesh_add_vertex(struct mesh *mesh, string_array_t *parts) {
+    if(parts->len < 4) {
         return false;
     }
 
@@ -52,8 +44,8 @@ add_vertex(struct mesh *mesh, string_array_t *parts) {
 }
 
 static bool
-add_normal(struct mesh *mesh, string_array_t *parts) {
-    if(parts->len != 4) {
+mesh_add_normal(struct mesh *mesh, string_array_t *parts) {
+    if(parts->len < 4) {
         return false;
     }
 
@@ -68,8 +60,8 @@ add_normal(struct mesh *mesh, string_array_t *parts) {
 }
 
 static bool
-add_texture(struct mesh *mesh, string_array_t *parts) {
-    if(parts->len != 3) {
+mesh_add_texture(struct mesh *mesh, string_array_t *parts) {
+    if(parts->len < 3) {
         return false;
     }
 
@@ -119,7 +111,7 @@ is_valid_vertex(struct mesh *mesh, struct vertex *vertex) {
 }
 
 static bool
-add_face(struct mesh *mesh, string_array_t *parts) {
+mesh_add_face(struct mesh *mesh, string_array_t *parts) {
     if(parts->len < 4) {
         return false;
     }
@@ -144,13 +136,13 @@ add_face(struct mesh *mesh, string_array_t *parts) {
 }
 
 static bool
-are_same_file(char *p1, char *p2) {
+are_same_file(string_t *p1, string_t *p2) {
     struct stat s1, s2;
-    if(stat(p1, &s1) != 0) {
+    if(stat(string_c_string_view(p1), &s1) != 0) {
         return false;
     }
 
-    if(stat(p2, &s2) != 0) {
+    if(stat(string_c_string_view(p2), &s2) != 0) {
         return false;
     }
 
@@ -158,9 +150,9 @@ are_same_file(char *p1, char *p2) {
 }
 
 static struct texture *
-try_find_texture(struct assets_manager *manager, char *path) {
+try_find_texture(struct assets_manager *manager, string_t *path) {
     list_for_each(struct texture, iter, &manager->textures, link) {
-        if(are_same_file(path, string_c_string_view(&iter->path))) {
+        if(are_same_file(path, &iter->path)) {
             return iter;
         }
     }
@@ -186,104 +178,13 @@ texture_unref(struct texture *texture) {
 
 static void
 material_destroy(struct material *material) {
+    string_deinit(&material->name);
+
     if(material->texture) {
         texture_unref(material->texture);
     }
 
-    string_deinit(&material->path);
     free(material);
-}
-
-static struct material *
-load_material(struct assets_manager *manager, char *path) {
-    // printf("path: %s\n", path);
-    struct reader *r = reader_create(path);
-    if(!r) {
-        return NULL;
-    }
-
-    struct material *material = alloc(sizeof(*material));
-
-    string_t line = {0};
-    string_array_t parts = {0};
-    while(reader_read_line(r, &line)) {
-        string_split(&line, ' ', true, &parts);
-
-        string_t *key = &parts.data[0];
-        if(string_equal_c_string(key, "Kd")) {
-            if(parts.len < 4) {
-                goto err;
-            }
-
-            material->diffuse_color = (vec3){
-                    atof(string_c_string_view(&parts.data[1])),
-                    atof(string_c_string_view(&parts.data[2])),
-                    atof(string_c_string_view(&parts.data[3])),
-            };
-        } else if(string_equal_c_string(key, "Ns")) {
-            if(parts.len < 2) {
-                goto err;
-            }
-
-            material->shininess = atoi(string_c_string_view(&parts.data[1]));
-        } else if(string_equal_c_string(key, "Ka")) {
-            if(parts.len < 4) {
-                goto err;
-            }
-
-            material->ambient_color = (vec3){
-                    atof(string_c_string_view(&parts.data[1])),
-                    atof(string_c_string_view(&parts.data[2])),
-                    atof(string_c_string_view(&parts.data[3])),
-            };
-        } else if(string_equal_c_string(key, "Ks")) {
-            if(parts.len < 4) {
-                goto err;
-            }
-
-            material->specular_color = (vec3){
-                    atof(string_c_string_view(&parts.data[1])),
-                    atof(string_c_string_view(&parts.data[2])),
-                    atof(string_c_string_view(&parts.data[3])),
-            };
-        } else if(string_equal_c_string(key, "d")) {
-            if(parts.len < 2) {
-                goto err;
-            }
-
-            material->opacity = atof(string_c_string_view(&parts.data[1]));
-        } else if(string_equal_c_string(key, "illum")) {
-            if(parts.len < 2) {
-                goto err;
-            }
-
-            material->illumination_model = atoi(string_c_string_view(&parts.data[1]));
-        } else if(string_equal_c_string(key, "map_Kd")) {
-            todo("add texture");
-        }
-
-        // free the substrings
-        for(struct string *iter = parts.data; iter < string_array_end(&parts); iter++) {
-            string_deinit(iter);
-        }
-    }
-
-    string_array_deinit(&parts);
-    string_deinit(&line);
-    reader_destroy(r);
-
-    return material;
-
-err:
-    for(struct string *iter = parts.data; iter < string_array_end(&parts); iter++) {
-        string_deinit(iter);
-    }
-    string_array_deinit(&parts);
-    string_deinit(&line);
-    reader_destroy(r);
-
-    material_destroy(material);
-    return NULL;
 }
 
 // name contains the path to the file from the current context. it will be expanded to a full path to it. this is useful
@@ -310,31 +211,188 @@ create_path_from_current_context(string_t *current, string_t *path) {
     path->len += last_slash + 1;
 }
 
-static bool
-add_material(struct assets_manager *manager, struct mesh *mesh, string_array_t *parts) {
+static struct texture *
+texture_load(string_t *path) {
+    int width, height, channels;
+    u8 *pixels = stbi_load(string_c_string_view(path), &width, &height, &channels, 4);
+    if(!pixels) {
+        return NULL;
+    }
+
+    struct texture *texture = alloc(sizeof(*texture));
+    string_clone(&texture->path, path);
+    texture->width = width;
+    texture->height = height;
+    texture->pixels = pixels;
+
+    return texture;
+}
+
+static void
+material_add_texture(struct assets_manager *manager, string_t *current_path, struct material *material,
+        string_array_t *parts) {
     if(parts->len < 2) {
-        return false;
+        return;
     }
 
     string_t *path = &parts->data[1];
-    for(int i = 0; i < path->len; i++) {
-        if(path->data[i] == 'l') {
-            printf("%d %d %d\n", i, path->len, path->cap);
-            break;
+    create_path_from_current_context(current_path, path);
+    printf("loading a texture: `%s`\n", string_c_string_view(path));
+
+    struct texture *texture = try_find_texture(manager, path);
+    if(texture) {
+        material->texture = texture;
+        texture_ref(texture);
+        return;
+    }
+
+    // load the texture and cache it
+    texture = texture_load(path);
+    if(!texture) {
+        printf("no texture\n");
+        return;
+    }
+
+    material->texture = texture;
+    texture_ref(texture);
+    list_insert(&manager->textures, &texture->link);
+}
+
+static void
+mesh_load_materials(struct assets_manager *manager, struct mesh *mesh, string_t *path) {
+    struct reader *r = reader_create(string_c_string_view(path));
+    if(!r) {
+        return;
+    }
+
+    struct material *material = NULL;
+
+    string_t line = {0};
+    string_array_t parts = {0};
+    while(reader_read_line(r, &line)) {
+        string_split(&line, ' ', true, &parts);
+
+        string_t *key = &parts.data[0];
+        if(string_equal_c_string(key, "newmtl")) {
+            if(parts.len < 2) {
+                goto err;
+            }
+
+            if(material) {
+                // finish with the current one
+                list_insert(&mesh->materials, &material->link);
+            }
+
+            // and create a new one with this name
+            material = alloc(sizeof(*material));
+            string_clone(&material->name, &parts.data[1]);
+        } else if(string_equal_c_string(key, "Kd")) {
+            if(parts.len < 4) {
+                goto err;
+            }
+
+            if(material) {
+                material->diffuse_color = (vec3){
+                        atof(string_c_string_view(&parts.data[1])),
+                        atof(string_c_string_view(&parts.data[2])),
+                        atof(string_c_string_view(&parts.data[3])),
+                };
+            }
+        } else if(string_equal_c_string(key, "Ns")) {
+            if(parts.len < 2) {
+                goto err;
+            }
+
+            if(material) {
+                material->shininess = atoi(string_c_string_view(&parts.data[1]));
+            }
+        } else if(string_equal_c_string(key, "Ka")) {
+            if(parts.len < 4) {
+                goto err;
+            }
+
+            if(material) {
+                material->ambient_color = (vec3){
+                        atof(string_c_string_view(&parts.data[1])),
+                        atof(string_c_string_view(&parts.data[2])),
+                        atof(string_c_string_view(&parts.data[3])),
+                };
+            }
+        } else if(string_equal_c_string(key, "Ks")) {
+            if(parts.len < 4) {
+                goto err;
+            }
+
+            if(material) {
+                material->specular_color = (vec3){
+                        atof(string_c_string_view(&parts.data[1])),
+                        atof(string_c_string_view(&parts.data[2])),
+                        atof(string_c_string_view(&parts.data[3])),
+                };
+            };
+        } else if(string_equal_c_string(key, "d")) {
+            if(parts.len < 2) {
+                goto err;
+            }
+
+            if(material) {
+                material->opacity = atof(string_c_string_view(&parts.data[1]));
+            }
+        } else if(string_equal_c_string(key, "illum")) {
+            if(parts.len < 2) {
+                goto err;
+            }
+
+            if(material) {
+                material->illumination_model = atoi(string_c_string_view(&parts.data[1]));
+            }
+        } else if(string_equal_c_string(key, "map_Kd")) {
+            if(material) {
+                material_add_texture(manager, path, material, &parts);
+            }
+        }
+
+        // free the substrings
+        for(struct string *iter = parts.data; iter < string_array_end(&parts); iter++) {
+            string_deinit(iter);
         }
     }
 
-    // printf("path before: `%s`\n", string_c_string_view(path));
-    // create_path_from_current_context(&mesh->path, path);
-    // printf("path after: `%s`\n", string_c_string_view(path));
-
-    struct material *material = load_material(manager, string_c_string_view(path));
-    if(!material) {
-        return false;
+    if(material) {
+        // insert the last one
+        list_insert(&mesh->materials, &material->link);
     }
 
-    list_insert(&mesh->materials, &material->link);
-    return true;
+    string_array_deinit(&parts);
+    string_deinit(&line);
+    reader_destroy(r);
+
+    return;
+
+err:
+    for(struct string *iter = parts.data; iter < string_array_end(&parts); iter++) {
+        string_deinit(iter);
+    }
+    string_array_deinit(&parts);
+    string_deinit(&line);
+    reader_destroy(r);
+
+    if(material) {
+        material_destroy(material);
+    }
+}
+
+static void
+mesh_add_material_library(struct assets_manager *manager, struct mesh *mesh, string_array_t *parts) {
+    if(parts->len < 2) {
+        return;
+    }
+
+    for(int i = 1; i < parts->len; i++) {
+        string_t *path = &parts->data[1];
+        create_path_from_current_context(&mesh->path, path);
+        mesh_load_materials(manager, mesh, path);
+    }
 }
 
 struct mesh *
@@ -351,32 +409,28 @@ assets_manager_load_mesh(struct assets_manager *manager, char *path) {
     string_t line = {0};
     string_array_t parts = {0};
     while(reader_read_line(r, &line)) {
-        printf("%d, `%s`\n", line.len, string_c_string_view(&line));
         string_split(&line, ' ', true, &parts);
 
         string_t *key = &parts.data[0];
         if(string_equal_c_string(key, "v")) {
-            if(!add_vertex(mesh, &parts)) {
+            if(!mesh_add_vertex(mesh, &parts)) {
                 goto err;
             }
         } else if(string_equal_c_string(key, "vn")) {
-            if(!add_normal(mesh, &parts)) {
+            if(!mesh_add_normal(mesh, &parts)) {
                 goto err;
             }
         } else if(string_equal_c_string(key, "vt")) {
-            if(!add_texture(mesh, &parts)) {
+            if(!mesh_add_texture(mesh, &parts)) {
                 goto err;
             }
         } else if(string_equal_c_string(key, "f")) {
-            if(!add_face(mesh, &parts)) {
+            if(!mesh_add_face(mesh, &parts)) {
                 goto err;
             }
         } else if(string_equal_c_string(key, "mtllib")) {
-            printf("`%s`   \n", string_c_string_view(&parts.data[1]));
-            if(!add_material(manager, mesh, &parts)) {
-                assert(false);
-                goto err;
-            }
+            // this is not critical, so we dont fail immediately
+            mesh_add_material_library(manager, mesh, &parts);
         }
 
         // free the substrings
@@ -391,6 +445,10 @@ assets_manager_load_mesh(struct assets_manager *manager, char *path) {
 
     // insert it into a list, so we can more easily track it
     list_insert(manager->meshes.prev, &mesh->link);
+
+    list_for_each(struct material, iter, &mesh->materials, link) {
+        printf("material: %s, has_texture: %d\n", string_c_string_view(&iter->name), iter->texture != NULL);
+    }
 
     return mesh;
 
