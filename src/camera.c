@@ -55,7 +55,6 @@ camera_update_position(struct camera *camera, struct keys *pressed, float dt) {
     }
 
     camera->pos = vec3_add(camera->pos, vec3_scale(dt * camera->speed, vec3_normalize(vel)));
-    // printf("camera position: %f, %f, %f\n", camera->pos.x, camera->pos.y, camera->pos.z);
 }
 
 void
@@ -67,8 +66,6 @@ camera_update_orientation(struct camera *camera, float dx, float dy) {
 
     camera->pitch -= dy;
     camera->pitch = clamp(camera->pitch, -M_PI_2, +M_PI_2);
-
-    // printf("pitch: %f, yaw: %f\n", camera->pitch, camera->yaw);
 
     // and compute the new normal vectors
     camera_compute_normals(camera);

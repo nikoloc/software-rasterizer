@@ -20,21 +20,41 @@ main(void) {
     g.window = window_create(&g);
 
     g.camera = camera_create(M_PI_2, 1.0f / 4096.0f, 4.0f);
-    g.camera->pos.y = -200.0f;
+    g.camera->pos.y = -1000.0f;
 
     g.scene = scene_add_tree(NULL);
     g.assets = assets_manager_create();
 
-    struct mesh *mesh = assets_manager_load_mesh(g.assets, "assets/meshes/weapon-catapult.obj");
-    assert(mesh);
+    char *paths[] = {
+            "assets/meshes/mon_ronera.obj",
+            "assets/meshes/sofa.obj",
+            "assets/meshes/tree.obj",
+            "assets/meshes/Grass_Block.obj",
+            "assets/meshes/healer.obj",
+    };
 
-    struct scene_mesh *scene_mesh = scene_add_mesh(g.scene, mesh);
-    scene_node_set_scale(&scene_mesh->node, 100.0f);
-    scene_node_set_rotation(&scene_mesh->node, (vec3){M_PI_2, 0.0f, 0.0f});
+    for(size_t i = 0; i < sizeof(paths) / sizeof(paths[0]); i++) {
+        struct mesh *mesh = assets_manager_load_mesh(g.assets, paths[i]);
+        assert(mesh);
+
+        struct scene_mesh *scene_mesh = scene_add_mesh(g.scene, mesh);
+        if(i == 0) {
+            scene_node_set_scale(&scene_mesh->node, 5.0f);
+        } else if(i == 1) {
+            scene_node_set_scale(&scene_mesh->node, 100.0f);
+        } else if(i == 3) {
+            scene_node_set_scale(&scene_mesh->node, 100.0f);
+        } else {
+            scene_node_set_scale(&scene_mesh->node, 10.0f);
+        }
+        // meshes usually assume opengl conventions so we flip them
+        scene_node_set_rotation(&scene_mesh->node, (vec3){M_PI_2, 0.0f, 0.0f});
+        scene_node_set_position(&scene_mesh->node, (vec3){i * 500.0f, 0.0f, 0.0f});
+    }
 
     w_connection_listen(g.conn);
 
-    // we only need to remove the root node, since it will resursively remove its children
+    // we only need to remove the root node, since it will recursively remove its children
     scene_node_remove(&g.scene->node);
     assets_manager_destroy(g.assets);
     camera_destroy(g.camera);

@@ -7,13 +7,13 @@
 #include "camera.h"
 #include "ints.h"
 #include "macros.h"
-#include "scene.h"
+#include "render.h"
 #include "w_desktop_shell.h"
 #include "w_keyboard.h"
 #include "w_pointer.h"
 
 static void
-pointer_handle_enter(struct w_pointer *pointer, struct w_surface *surface, float x, float y) {
+pointer_handle_enter(struct w_pointer* pointer, struct w_surface* surface, float x, float y) {
     unused(surface), unused(x), unused(y);
 
     w_pointer_lock(pointer, -1, -1);
@@ -21,11 +21,11 @@ pointer_handle_enter(struct w_pointer *pointer, struct w_surface *surface, float
 }
 
 static void
-pointer_handle_relative_motion(struct w_pointer *pointer, struct w_surface *surface, float dx, float dy,
+pointer_handle_relative_motion(struct w_pointer* pointer, struct w_surface* surface, float dx, float dy,
         float dx_unaccel, float dy_unaccel) {
     unused(surface), unused(dx_unaccel), unused(dy_unaccel);
 
-    struct window *window = pointer->data;
+    struct window* window = pointer->data;
     camera_update_orientation(window->g->camera, dx, dy);
 }
 
@@ -35,10 +35,10 @@ static struct w_pointer_listener pointer_listener = {
 };
 
 static void
-keyboard_handle_key(struct w_keyboard *keyboard, struct w_surface *surface, u32 raw, enum wl_keyboard_key_state state) {
+keyboard_handle_key(struct w_keyboard* keyboard, struct w_surface* surface, u32 raw, enum wl_keyboard_key_state state) {
     unused(surface);
 
-    struct window *window = keyboard->data;
+    struct window* window = keyboard->data;
 
     switch(raw) {
         case KEY_W: {
@@ -77,18 +77,18 @@ static struct w_keyboard_listener keyboard_listener = {
 };
 
 static void
-render_frame(struct window *window, float dt);
+render_frame(struct window* window, float dt);
 
 static void
-handle_frame(struct w_surface *surface, float dt) {
+handle_frame(struct w_surface* surface, float dt) {
     unused(dt), unused(surface);
 
-    struct window *window = surface->data;
+    struct window* window = surface->data;
     render_frame(window, dt);
 }
 
 static void
-render_frame(struct window *window, float dt) {
+render_frame(struct window* window, float dt) {
     int width = window->g->camera->width;
     int height = window->g->camera->height;
 
@@ -99,7 +99,7 @@ render_frame(struct window *window, float dt) {
         window->buffer_pool = w_buffer_pool_create(window->g->conn, width, height, 3);
     }
 
-    struct w_buffer *buffer = w_buffer_pool_get_buffer(window->buffer_pool);
+    struct w_buffer* buffer = w_buffer_pool_get_buffer(window->buffer_pool);
     if(!buffer) {
         return;
     }
@@ -111,7 +111,7 @@ render_frame(struct window *window, float dt) {
         window->g->depth_buffer = alloc(window->g->camera->width * window->g->camera->height * sizeof(float));
     }
 
-    scene_render(window->g->scene, window->g->camera, buffer->data, window->g->depth_buffer);
+    render(window->g->scene, window->g->camera, buffer->data, window->g->depth_buffer);
 
     w_surface_set_buffer(window->toplevel->surface, buffer);
     w_surface_commit(window->toplevel->surface);
@@ -120,8 +120,8 @@ render_frame(struct window *window, float dt) {
 }
 
 static void
-handle_configure(struct w_toplevel *toplevel) {
-    struct window *window = toplevel->data;
+handle_configure(struct w_toplevel* toplevel) {
+    struct window* window = toplevel->data;
 
     if(toplevel->current.width != window->g->camera->width || toplevel->current.height != window->g->camera->height) {
         camera_update_viewport(window->g->camera, toplevel->current.width, toplevel->current.height);
@@ -140,8 +140,8 @@ handle_configure(struct w_toplevel *toplevel) {
 }
 
 static void
-handle_close(struct w_toplevel *toplevel) {
-    struct window *window = toplevel->data;
+handle_close(struct w_toplevel* toplevel) {
+    struct window* window = toplevel->data;
 
     w_connection_close(window->g->conn);
 }
@@ -151,9 +151,9 @@ static struct w_toplevel_listener toplevel_listener = {
         .close = handle_close,
 };
 
-struct window *
-window_create(struct state *g) {
-    struct window *window = alloc(sizeof(*window));
+struct window*
+window_create(struct state* g) {
+    struct window* window = alloc(sizeof(*window));
     window->g = g;
 
     window->pointer = w_pointer_create(window->g->conn);
@@ -189,7 +189,7 @@ window_create(struct state *g) {
 }
 
 void
-window_destroy(struct window *window) {
+window_destroy(struct window* window) {
     if(window->pointer) {
         w_pointer_destroy(window->pointer);
     }

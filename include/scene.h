@@ -2,8 +2,6 @@
 #define SCENE_H
 
 #include "array.h"
-#include "camera.h"
-#include "ints.h"
 #include "vec3.h"
 
 enum scene_node_type {
@@ -17,6 +15,9 @@ struct transform {
     mat3 rot;
     float scale;
 };
+
+void
+transform_default(struct transform *dest);
 
 struct scene_node {
     // use this fiels and `container_of()` macro to retrive the appropriate structure
@@ -68,8 +69,5 @@ scene_node_reparent(struct scene_node *node, struct scene_tree *parent);
 
 void
 scene_node_remove(struct scene_node *node);
-
-void
-scene_render(struct scene_tree *scene, struct camera *camera, u32 *buffer, float *depth_buffer);
 
 #endif

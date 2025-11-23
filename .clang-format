@@ -19,3 +19,4 @@ BreakBeforeBraces: Attach
 ColumnLimit: '120'
 SpaceAfterLogicalNot: 'false'
 SpaceBeforeParens: Never
+PointerAlignment: Right

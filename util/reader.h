@@ -1,13 +1,28 @@
 #ifndef READER_H
 #define READER_H
 
+// this is a simple reader interface for reading a text file line by line, suitable for usual text parsing needs it
+// depends on the `dynamic_string.h` header, so make sure you include it beforehand
+
+#include <errno.h>
 #include <fcntl.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 
-#include "dynamic_string.h"
+struct reader *
+reader_create(char *path);
+
+bool
+reader_read_line(struct reader *reader, string_t *dest);
+
+void
+reader_destroy(struct reader *reader);
+
+#endif
+
+#ifdef READER_IMPLEMENTATION
 
 #ifndef READER_BUFFER_SIZE
 #define READER_BUFFER_SIZE 256
@@ -30,7 +45,7 @@ _read_next(struct reader *reader) {
     return n > 0;
 }
 
-static inline struct reader *
+struct reader *
 reader_create(char *path) {
     int fd = open(path, O_RDONLY | O_CLOEXEC);
     if(fd < 0) {
@@ -59,7 +74,7 @@ err:
     return NULL;
 }
 
-static inline bool
+bool
 reader_read_line(struct reader *reader, string_t *dest) {
     if(reader->len <= 0) {
         return false;
@@ -100,7 +115,7 @@ reader_read_line(struct reader *reader, string_t *dest) {
     }
 }
 
-static inline void
+void
 reader_destroy(struct reader *reader) {
     close(reader->fd);
     free(reader);

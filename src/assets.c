@@ -4,6 +4,7 @@
 
 #include "alloc.h"
 #include "ints.h"
+#define READER_IMPLEMENTATION
 #include "reader.h"
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
@@ -12,6 +13,7 @@ struct assets_manager *
 assets_manager_create(void) {
     struct assets_manager *manager = alloc(sizeof(*manager));
     list_init(&manager->meshes);
+    // we keep the textures cached here since many materials may use the same reference texture
     list_init(&manager->textures);
 
     return manager;
@@ -65,11 +67,16 @@ mesh_add_texture(struct mesh *mesh, string_array_t *parts) {
         return false;
     }
 
-    vec2_array_push(&mesh->textures,
-            (vec2){
-                    atof(string_c_string_view(&parts->data[1])),
-                    atof(string_c_string_view(&parts->data[2])),
-            });
+    vec2 this = {
+            atof(string_c_string_view(&parts->data[1])),
+            atof(string_c_string_view(&parts->data[2])),
+    };
+
+    // for some reason some .obj files have vt that wraps so we need to do that
+    this.x = this.x - floor(this.x);
+    this.y = this.y - floor(this.y);
+
+    vec2_array_push(&mesh->textures, this);
 
     return true;
 }
@@ -237,7 +244,6 @@ material_add_texture(struct assets_manager *manager, string_t *current_path, str
 
     string_t *path = &parts->data[1];
     create_path_from_current_context(current_path, path);
-    printf("loading a texture: `%s`\n", string_c_string_view(path));
 
     struct texture *texture = try_find_texture(manager, path);
     if(texture) {
@@ -249,7 +255,6 @@ material_add_texture(struct assets_manager *manager, string_t *current_path, str
     // load the texture and cache it
     texture = texture_load(path);
     if(!texture) {
-        printf("no texture\n");
         return;
     }
 
@@ -285,6 +290,8 @@ mesh_load_materials(struct assets_manager *manager, struct mesh *mesh, string_t 
 
             // and create a new one with this name
             material = alloc(sizeof(*material));
+            // there have been some models that do not set the Kd parametar, so we have this as a default
+            material->diffuse_color = (vec3){1.0f, 1.0f, 1.0f};
             string_clone(&material->name, &parts.data[1]);
         } else if(string_equal_c_string(key, "Kd")) {
             if(parts.len < 4) {
@@ -347,12 +354,13 @@ mesh_load_materials(struct assets_manager *manager, struct mesh *mesh, string_t 
                 material->illumination_model = atoi(string_c_string_view(&parts.data[1]));
             }
         } else if(string_equal_c_string(key, "map_Kd")) {
-            if(material) {
+            // in a ambigous case of multiple textures ignore all after the first one
+            if(material && !material->texture) {
                 material_add_texture(manager, path, material, &parts);
             }
         }
 
-        // free the substrings
+        // free this line resources
         for(struct string *iter = parts.data; iter < string_array_end(&parts); iter++) {
             string_deinit(iter);
         }
@@ -395,6 +403,38 @@ mesh_add_material_library(struct assets_manager *manager, struct mesh *mesh, str
     }
 }
 
+static struct material *
+try_find_material(struct mesh *mesh, string_t *name) {
+    list_for_each(struct material, iter, &mesh->materials, link) {
+        if(string_equal(&iter->name, name)) {
+            return iter;
+        }
+    }
+
+    return NULL;
+}
+
+static void
+mesh_add_use_material(struct mesh *mesh, string_array_t *parts) {
+    if(parts->len < 2) {
+        // not fatal
+        return;
+    }
+
+    string_t *name = &parts->data[1];
+    struct material *material = try_find_material(mesh, name);
+    if(!material) {
+        return;
+    }
+
+    int face_index = mesh->faces.len;
+    use_material_array_push(&mesh->use_materials,
+            (struct use_material){
+                    .face_index = face_index,
+                    .material = material,
+            });
+}
+
 struct mesh *
 assets_manager_load_mesh(struct assets_manager *manager, char *path) {
     struct reader *r = reader_create(path);
@@ -431,9 +471,12 @@ assets_manager_load_mesh(struct assets_manager *manager, char *path) {
         } else if(string_equal_c_string(key, "mtllib")) {
             // this is not critical, so we dont fail immediately
             mesh_add_material_library(manager, mesh, &parts);
+        } else if(string_equal_c_string(key, "usemtl")) {
+            // same
+            mesh_add_use_material(mesh, &parts);
         }
 
-        // free the substrings
+        // finish by releasing resources for this line
         for(struct string *iter = parts.data; iter < string_array_end(&parts); iter++) {
             string_deinit(iter);
         }
@@ -443,12 +486,9 @@ assets_manager_load_mesh(struct assets_manager *manager, char *path) {
     string_deinit(&line);
     reader_destroy(r);
 
-    // insert it into a list, so we can more easily track it
+    // insert it into a list, so we can more easily track it; this way we can just destoy the manager instead of
+    // tracking all of the meshes independently
     list_insert(manager->meshes.prev, &mesh->link);
-
-    list_for_each(struct material, iter, &mesh->materials, link) {
-        printf("material: %s, has_texture: %d\n", string_c_string_view(&iter->name), iter->texture != NULL);
-    }
 
     return mesh;
 
@@ -474,11 +514,15 @@ mesh_destroy(struct mesh *mesh) {
     vec2_array_deinit(&mesh->textures);
     face_array_deinit(&mesh->faces);
 
+    use_material_array_deinit(&mesh->use_materials);
+
     list_for_each_safe(struct material, iter, &mesh->materials, link) {
         material_destroy(iter);
     }
 
-    if(mesh->link.prev != NULL) {
+    // this is a bit hacky but works since the only way to have this as NULL is if its called one error in
+    // `assets_manager_load_mesh()`. note that that may change so corections might be needed in the future
+    if(mesh->link.prev) {
         list_remove(&mesh->link);
     }
 
